@@ -1,4 +1,13 @@
 # NSA-9
+
+## Sommaire
+* [Initialisation](https://github.com/fahimbench/devops9#initialisation)
+* [Création et duplication VM modèle](https://github.com/fahimbench/devops9#cr%C3%A9ation-et-duplication-vm-mod%C3%A8le)
+  * [Création](https://github.com/fahimbench/devops9#cr%C3%A9ation)
+  * [Installation et configuration du Debian](https://github.com/fahimbench/devops9#installation-et-configuration-du-debian)
+  * [Duplication](https://github.com/fahimbench/devops9#duplication)
+* [Configuration Réseau](https://github.com/fahimbench/devops9#configuration-r%C3%A9seau)
+
 ## Initialisation
 Télécharger VirtualBox : [VirtualBox](https://www.virtualbox.org/wiki/Downloads)
 
@@ -94,3 +103,27 @@ reboot
 
 Répéter l'opération pour les autres VM
 
+## Réglages du Pare-feu
+
+| Nom de la VM    | Ports          |
+| --------------- | :-------------:|
+| Gitlab server   | 22,80,443,2289 |
+| Front server    | 22,80,443      |
+| Back server     | 22,80,443      |
+| Database server | 22,3306        |
+
+Télécharger [ufw](http://debian-facile.org/doc:systeme:ufw) :
+```bash
+apt install ufw
+```
+
+On active ufw pour les démarrages :
+```bash
+ufw enable
+```
+
+On autorise le service ou le port :
+```bash
+ufw allow XXX 
+```
+XXX étant le nom du service ou le port.
