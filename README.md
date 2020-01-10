@@ -35,7 +35,7 @@ Il y a 4 duplications à faire.
 | Back server    |
 | Database server|
 
-Clique droit et Cloner sur la VM.
+Clic droit et Cloner sur la VM.
 
 Lors du clonage dans les options proposés, n'oubliez pas de changer le **nom de la VM** (cf. Tableau ci-dessus) et générer une nouvelle **adresse MAC** ainsi que de le cloner intégralement.
 
@@ -46,9 +46,51 @@ Lors du clonage dans les options proposés, n'oubliez pas de changer le **nom de
 Dans le menu de VirtualBox -> **Fichier** -> **Gestionnaire de réseau hôte**
 
 Désactiver le **serveur DHCP** et Configurer la carte manuellement comme suit:
+
 | Propriété           | Valeur           |
 | ------------------- | :--------------: |
 | Adresse IPv4        | 192.168.0.1      |
 | Masque réseau IPv4  | 255.255.255.248  |
 
-# WIP
+Et appliquer !
+
+Clic droit sur une VM -> **Configuration** -> **Réseau** -> **Onglet Carte 2** -> Sélectionner en **mode d'accés réseau** ‟Réseau privé hôte” et en nom sélectionner le **réseau hôte** précédemment créé.
+
+Reproduire pour les autres VMs
+
+Lancer une VM et se connecter en root.
+
+Éditer le fichier /etc/network/interfaces qui permet de paramétrer l’accès de l'ordinateur au réseau.
+
+```bash
+vi /etc/network/interfaces
+```
+
+(cf. [Utilisation de vi](http://wiki.linux-france.org/wiki/Utilisation_de_vi))
+
+Et ajouter les lignes suivantes à la fin du fichier :
+```bash
+auto enp0s8
+iface enp0s8 inet static
+    address 192.168.0.X
+    submask 255.255.255.248
+    gateway 192.168.0.6
+```
+
+Où **X** dans adress est : 
+
+| Nom de la VM    | Valeur de X |
+| --------------- | :---------: |
+| Gitlab server   | 2           |
+| Front server    | 3           |
+| Back server     | 4           |
+| Database server | 5           |
+
+**Enregistrer** puis **reboot** la machine pour que les modifications soient prises en compte.
+
+```bash
+reboot
+```
+
+Répéter l'opération pour les autres VM
+
