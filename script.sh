@@ -78,12 +78,12 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         v.memory = 1024
         v.customize ['modifyvm', hostname, '--nic2', 'hostonly', '--cableconnected2', 'on', '--hostonlyadapter2', '${vboxhostonly}']
       end
-      if machine_id == N
-      machine.vm.provision :ansible do |ansible|
-        # Disable default limit to connect to all the machines
-        ansible.limit = 'all'
-        ansible.playbook = 'playbook.yml'
-      end
+#      if machine_id == N
+#      machine.vm.provision :ansible do |ansible|
+#        # Disable default limit to connect to all the machines
+#        ansible.limit = 'all'
+#        ansible.playbook = 'playbook.yml'
+#      end
     end
   end
 end" > Vagrantfile
