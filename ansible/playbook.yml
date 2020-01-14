@@ -1,0 +1,9 @@
+#A changer et laisser become
+- name: Installation du serveur
+  hosts: gitlab_server
+  become: yes
+  tasks:
+    - name: Installation de git
+      apt: name=git update_cache=yes
+    - name: installation de Vim
+      apt: name=vim

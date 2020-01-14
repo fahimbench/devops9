@@ -38,10 +38,25 @@ else
   echo "Ansible already installed"
 fi
 
+#Verify if nginx is installed
+if [ $(dpkg-query -W -f='${Status}' nginx 2>/dev/null | grep -c "ok installed") -eq 0 ];
+then
+  echo "Nginx will be installed ..."
+  apt-get -yq install nginx > /dev/null && echo "nginx installed.";
+else
+  echo "Nginx already installed"
+fi
 
-vboxhostonly=`vboxmanage hostonlyif create | sed -n "s/^.*'\(.*\)'.*$/\1/p"`
-vboxmanage hostonlyif ipconfig ${vboxhostonly} --ip 192.168.0.1 --netmask 255.255.255.248
-echo "${vboxhostonly} hostonly network created"
+#Configure new hostonly network with 192.168.0.1 if not exist
+vboxhostonly=`ifconfig | grep -B 1 "inet 192.168.0.1  netmask 255.255.255.248" | head -n 1 | cut -d: -f 1`
+if [ -z '$vboxhostonly' ];
+then
+  vboxhostonly=`vboxmanage hostonlyif create | sed -n "s/^.*'\(.*\)'.*$/\1/p"`
+  vboxmanage hostonlyif ipconfig ${vboxhostonly} --ip 192.168.0.1 --netmask 255.255.255.248
+  echo "${vboxhostonly} hostonly network created"
+else
+  echo "hostonly network 192.168.0.1 exists"
+fi
 
 #Create vms folder if not created yet and move on
 if [[ ! -d ~/vms ]];
@@ -49,9 +64,17 @@ then
   mkdir ~/vms && echo "Folder vms created in ~/vms"
 fi
 
+if [[ -d ~/vms/ansible ]];
+then
+  rm -R ~/vms/ansible
+fi
+cp -R ansible ~/vms
+
 #change directory
 cd ~/vms
 
+
+#Write in Vagrantfile the config
 echo "# -*- mode: ruby -*-
 
 # vi: set ft=ruby :
@@ -67,7 +90,7 @@ HOST_CONFIG = {
 }
 
 # create the vms
-N = 5
+N = 3
 Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
   HOST_CONFIG.each_with_index do |(hostname, basebox), index|
     config.vm.define hostname do |hname|
@@ -76,16 +99,67 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
       hname.vm.provider 'virtualbox' do |v|
         v.name = hostname
         v.memory = 1024
-        v.customize ['modifyvm', hostname, '--nic2', 'hostonly', '--cableconnected2', 'on', '--hostonlyadapter2', '${vboxhostonly}']
+        #v.customize ['modifyvm', hostname, '--nic2', 'hostonly', '--cableconnected2', 'on', '--hostonlyadapter2', '${vboxhostonly}']
       end
-#      if machine_id == N
-#      machine.vm.provision :ansible do |ansible|
-#        # Disable default limit to connect to all the machines
-#        ansible.limit = 'all'
-#        ansible.playbook = 'playbook.yml'
-#      end
+        if index == N
+        hname.vm.provision :ansible do |ansible|
+          # Disable default limit to connect to all the machines
+          ansible.limit = 'all'
+          ansible.inventory_path = \"ansible/hosts\"
+          ansible.playbook = 'ansible/playbook.yml'
+        end
+      end
     end
   end
 end" > Vagrantfile
- 
+
+#Launch Vagrantfile build all VMs
 vagrant up
+
+#Config Nginx reverse proxy gitlab and front
+echo "
+upstream gitlab {
+  server 192.168.0.2;
+}
+server {
+        listen   80;
+        server_name  gitlab.server;
+        access_log  /var/log/gitlab.access.log;
+        error_log  /var/log/gitlab.nginx_error.log debug;
+        location / {
+                proxy_pass         http://gitlab;
+        }
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+                root   /var/www/nginx-default;
+        }
+
+}" > /etc/nginx/sites-available/gitlab.server.conf
+
+echo "
+upstream front {
+  server 192.168.0.3;
+}
+server {
+        listen   80;
+        server_name  front.server;
+        access_log  /var/log/front.access.log;
+        error_log  /var/log/front.nginx_error.log debug;
+        location / {
+                proxy_pass         http://front;
+        }
+        error_page   500 502 503 504  /50x.html;
+        location = /50x.html {
+                root   /var/www/nginx-default;
+        }
+
+}" > /etc/nginx/sites-available/front.server.conf
+
+#delete and link(re-link) available and enabled
+rm /etc/nginx/sites-enabled/gitlab.server.conf
+rm /etc/nginx/sites-enabled/front.server.conf
+ln -s /etc/nginx/sites-available/gitlab.server.conf /etc/nginx/sites-enabled/
+ln -s /etc/nginx/sites-available/front.server.conf /etc/nginx/sites-enabled/
+
+#reload service
+systemctl restart nginx

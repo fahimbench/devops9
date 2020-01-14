@@ -1,0 +1,11 @@
+[gitlab_server]
+192.168.0.2 ansible_ssh_port=22 ansible_ssh_user=vagrant ansible_ssh_private_key_file=~/vms/.vagrant/machines/gitlab_server/virtualbox/private_key
+
+[front_server]
+192.168.0.3 ansible_ssh_port=22 ansible_ssh_user=vagrant ansible_ssh_private_key_file=~/vms/.vagrant/machines/front_server/virtualbox/private_key
+
+[back_server]
+192.168.0.4 ansible_ssh_port=22 ansible_ssh_user=vagrant ansible_ssh_private_key_file=~/vms/.vagrant/machines/back_server/virtualbox/private_key
+
+[database_server]
+192.168.0.5 ansible_ssh_port=22 ansible_ssh_user=vagrant ansible_ssh_private_key_file=~/vms/.vagrant/machines/database_server/virtualbox/private_key
