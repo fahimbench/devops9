@@ -40,7 +40,7 @@ sudo vboxmanage unregistervm front_server --delete
 sudo vboxmanage unregistervm back_server --delete
 sudo vboxmanage unregistervm database_server --delete
 ```
-#Ansible
+# Ansible
 
 La configuration ansible se trouve dans le dossier nommé ansible.
 
