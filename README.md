@@ -7,13 +7,14 @@ Lancer le fichier script.sh :
 sudo bash script.sh
 ```
 
-Ce script installera les packages suivants :
+Ce script installera les packages suivants sur la machine hôte :
 
 - Ansible
 - Vagrant
 - Virtualbox
+- Nginx
 
-Il créera un nouvel adapteur réseau pour Virtualbox :
+Il créera un nouvel adapteur réseau pour Virtualbox (si n'existe pas déjà) :
 
 **Adresse IP** : 192.168.0.1
 **Sous-masque** : 255.255.255.248
@@ -39,3 +40,9 @@ sudo vboxmanage unregistervm front_server --delete
 sudo vboxmanage unregistervm back_server --delete
 sudo vboxmanage unregistervm database_server --delete
 ```
+#Ansible
+
+La configuration ansible se trouve dans le dossier nommé ansible.
+
+Il se lance en même temps que la création de nos VMs. 
+Auquel cas vous devrez supprimez les VMs avec les commandes ci-dessus et relancer le script.
