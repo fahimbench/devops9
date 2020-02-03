@@ -1,0 +1,47 @@
+image: node:latest
+
+cache:
+  paths:
+    - node_modules/
+    - .yarn
+    - dist/
+
+before_script:
+  - apt-get update
+
+stages:
+  - build
+  - test
+  - deploy
+
+build_project:
+  stage: build
+  only:
+    - master
+  script:
+    - yarn config set cache-folder .yarn
+    - yarn install
+    - npm run build --prod
+
+test_with_lab:
+  stage: test
+  only:
+    - master
+  script:
+    - apt-get -y install chromium
+    - export CHROME_BIN=/usr/bin/chromium
+    - yarn config set cache-folder .yarn
+    - yarn install
+    - npm run test
+
+deploy_front:
+  stage: deploy
+  only:
+    - master
+  script:
+    - apt-get -y install ansible
+    - echo $ANSIBLE_KEY_SSH_FRONT > front_server
+    - echo $ANSIBLE_HOSTS > hosts
+    - ansible-playbook playbooks/playbook.yml
+  after_script:
+    - rm front_server hosts

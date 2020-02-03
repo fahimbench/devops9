@@ -1,0 +1,121 @@
+- name: Installation du serveur gitlab
+  hosts: gitlab_server
+  become: yes
+  tasks:
+  - name: Update the apt package index
+    apt:
+      name: "*"
+      state: latest
+      update_cache: yes
+      force_apt_get: yes
+  - name: Install packages for apt add repository over HTTPS
+    apt:
+      name: "{{ packagesdep }}"
+      force_apt_get: yes
+      state: latest
+      update_cache: yes
+    vars:
+      packagesdep:
+      - git
+      - apt-transport-https
+      - ca-certificates
+      - wget
+      - software-properties-common
+      - gnupg2
+      - curl
+      - python
+      - python-pip
+  - name: Add Apt signing key from official docker repo
+    apt_key:
+      url: https://download.docker.com/linux/debian/gpg
+      state: present
+  - name: add docker official repository for Debian Stretch
+    apt_repository:
+      repo: deb [arch=amd64] https://download.docker.com/linux/debian stretch stable
+      state: present
+  - name: Index new repo into the cache
+    apt:
+      name: "*"
+      state: latest
+      update_cache: yes
+      force_apt_get: yes
+  - name: install python-docker
+    apt:
+      name: python-docker
+  - name: actually install docker
+    apt:
+      name: docker-ce
+      state: latest
+  - name: create playbooks config hosts directory
+    file:
+      path: /ansible
+      state: directory
+      mode: "0777"
+  - name: copy hosts config
+    copy:
+      src: ~/vms/ansible/hosts_gitlab_server
+      dest: /ansible/hosts
+  - name: Hosts file to variable
+    set_fact: hosts_file={{ lookup('file', '~/vms/ansible/hosts_gitlab_server') }}
+  - name: create ssh directory
+    file:
+      path: /ssh
+      state: directory
+      mode: "0600"
+  - name: copy front_server private key
+    copy:
+      src: ~/vms/.vagrant/machines/front_server/virtualbox/private_key
+      dest: /ssh/front_server
+  - name: front server to variable
+    set_fact: front_server_file={{ lookup('file', '~/vms/.vagrant/machines/front_server/virtualbox/private_key') }}
+  - name: copy back_server private key
+    copy:
+      src: ~/vms/.vagrant/machines/back_server/virtualbox/private_key
+      dest: /ssh/back_server
+  - name: back server to variable
+    set_fact: back_server_file={{ lookup('file', '~/vms/.vagrant/machines/back_server/virtualbox/private_key') }}
+  - name: copy database_server private key
+    copy:
+      src: ~/vms/.vagrant/machines/database_server/virtualbox/private_key
+      dest: /ssh/database_server
+  - name: database server to variable
+    set_fact: database_server_file={{ lookup('file', '~/vms/.vagrant/machines/database_server/virtualbox/private_key') }}
+  - name: install gitlab-ce container (docker)
+    docker_container:
+      name: gitlab
+      detach: yes
+      hostname: 192.168.0.2
+      restart_policy: always
+      published_ports:
+        - "80:80"
+        - "443:443"
+        - "2289:22"
+      volumes:
+        - /srv/gitlab/config:/etc/gitlab
+        - /srv/gitlab/logs:/var/log/gitlab
+        - /srv/gitlab/data:/var/opt/gitlab
+      env:
+        GITLAB_OMNIBUS_CONFIG="external_url 'http://192.168.0.2/'; gitlab_rails['lfs_enabled'] = true;gitlab_rails['initial_shared_runners_registration_token']='{{ token }}'"
+        GITLAB_ROOT_PASSWORD="{{ gitlab_root_password }}"
+      image: gitlab/gitlab-ce:latest
+  - name: Install gitlab-runner container (docker)
+    docker_container:
+      name: gitlab-runner
+      detach: yes
+      hostname: 192.168.0.2
+      restart_policy: always
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+        - /srv/gitlab-runner/config:/etc/gitlab-runner
+      image: gitlab/gitlab-runner:latest
+  - name: Test if gitlab API open
+    shell: |
+      /bin/bash -c 'while true;
+      do
+        if [ $(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1/api/v4/runners) -eq 401 ]; then
+          break
+        fi
+        sleep 5
+      done'
+  - name: Create gitlab runner
+    shell: docker exec gitlab-runner gitlab-runner register --non-interactive --url "http://192.168.0.2" --registration-token {{ token }} --executor "docker" --docker-image ruby:2.1 --description "docker-runner" --tag-list "docker" --run-untagged="true" --locked="false" --access-level="not_protected"

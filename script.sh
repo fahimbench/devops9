@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 #If not launched with sudo
 if [[ $UID != 0 ]];
@@ -8,16 +9,42 @@ then
     exit 1
 fi
 
-#Update
-#echo "Update ..." && apt-get -qq update > /dev/null
-
+#Ask if we want remove all machine before continue if vms are already installed
 #Verify if virtualbox is installed
 if [ $(dpkg-query -W -f='${Status}' virtualbox 2>/dev/null | grep -c "ok installed") -eq 0 ];
 then
   echo "Virtualbox will be installed ..."
   apt-get -yq install virtualbox > /dev/null && echo "Virtualbox installed."
 else
+  if [ $(VBoxManage list vms | grep -E "gitlab_server|front_server|back_server|database_server" | wc -l) -gt 0 ];
+  then
+      echo "VMs already installed. Needs to reinstall them (re-create) for continue ! Accept ? (y/n)"
+      read accept
+      if [ $accept == 'y' ];
+      then
+        killall -9 VBoxHeadless && vagrant destroy && echo "all processes killed"
+        vboxmanage unregistervm gitlab_server --delete >> /dev/null
+        vboxmanage unregistervm front_server --delete >> /dev/null
+        vboxmanage unregistervm back_server --delete >> /dev/null
+        vboxmanage unregistervm database_server --delete >> /dev/null
+        echo "all VMs deleted"
+      else
+        exit 1
+      fi
+  fi
   echo "Virtualbox already installed"
+fi
+
+echo "Please enter new gitlab root password"
+read gitlab_root_password
+
+#Verify if git is installed
+if [ $(dpkg-query -W -f='${Status}' git 2>/dev/null | grep -c "ok installed") -eq 0 ];
+then
+  echo "Git will be installed ..."
+  apt-get -yq install git > /dev/null && echo "Git installed."
+else
+  echo "Git already installed"
 fi
 
 #Verify if vagrant is installed
@@ -59,107 +86,87 @@ else
 fi
 
 #Create vms folder if not created yet and move on
-if [[ ! -d ~/vms ]];
+if [[ -d ~/vms ]];
 then
-  mkdir ~/vms && echo "Folder vms created in ~/vms"
+  echo 'remove ~/vms folder'
+  rm -R ~/vms
 fi
+mkdir ~/vms && echo "Folder vms created in ~/vms"
 
-if [[ -d ~/vms/ansible ]];
+#delete, cp and link(re-link) available and enabled gitlab conf
+if [[ -f /etc/nginx/sites-enabled/gitlab.server.conf ]];
 then
-  rm -R ~/vms/ansible
+  echo 'Remove nginx old gitlab config'
+  rm -f /etc/nginx/sites-available/gitlab.server.conf
 fi
-cp -R ansible ~/vms
+echo 'Copy nginx gitlab config'
+cp nginx-config/gitlab.server.conf /etc/nginx/sites-enabled/
+
+#delete, cp and link(re-link) available and enabled front conf
+if [[ -f /etc/nginx/sites-enabled/front.server.conf ]];
+then
+  echo 'Remove nginx old front config'
+  rm -f /etc/nginx/sites-available/front.server.conf && rm -f /etc/nginx/sites-enabled/front.server.conf
+fi
+echo 'Copy nginx front config'
+cp nginx-config/front.server.conf /etc/nginx/sites-enabled/
+
+#copy Vagrantfile to ~/vms
+echo 'Copy Vagrantfile to ~/vms'
+cp Vagrantfile ~/vms/Vagrantfile
+
+#copy playbooks config to ~/vms
+echo 'Copy playbooks folder to ~/vms'
+cp -R ansible ~/vms/ansible
+
+#copy repositories to ~/vms
+echo 'Copy repositories folder to ~/vms'
+cp -R repositories ~/vms/repositories
 
 #change directory
+echo 'Change directory to ~/vms'
 cd ~/vms
 
-
-#Write in Vagrantfile the config
-echo "# -*- mode: ruby -*-
-
-# vi: set ft=ruby :
-
-VAGRANTFILE_API_VERSION = '2'
-
-# declare the machine config in a hash
-HOST_CONFIG = { 
-  'gitlab_server' => 'bento/debian-10',
-  'front_server' => 'bento/debian-10',
-  'back_server' => 'bento/debian-10',
-  'database_server' => 'bento/debian-10'
-}
-
-# create the vms
-N = 3
-Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
-  HOST_CONFIG.each_with_index do |(hostname, basebox), index|
-    config.vm.define hostname do |hname|
-      hname.vm.box = basebox
-      hname.vm.network 'private_network', ip: \"192.168.0.#{2+index}\", netmask: '255.255.255.248'
-      hname.vm.provider 'virtualbox' do |v|
-        v.name = hostname
-        v.memory = 1024
-        #v.customize ['modifyvm', hostname, '--nic2', 'hostonly', '--cableconnected2', 'on', '--hostonlyadapter2', '${vboxhostonly}']
-      end
-        if index == N
-        hname.vm.provision :ansible do |ansible|
-          # Disable default limit to connect to all the machines
-          ansible.limit = 'all'
-          ansible.inventory_path = \"ansible/hosts\"
-          ansible.playbook = 'ansible/playbook.yml'
-        end
-      end
-    end
-  end
-end" > Vagrantfile
-
 #Launch Vagrantfile build all VMs
-vagrant up
+echo 'Vagrant Up Vms'
+GITLAB_ROOT_PASSWORD=${gitlab_root_password} vagrant up
 
-#Config Nginx reverse proxy gitlab and front
-echo "
-upstream gitlab {
-  server 192.168.0.2;
-}
-server {
-        listen   80;
-        server_name  gitlab.server;
-        access_log  /var/log/gitlab.access.log;
-        error_log  /var/log/gitlab.nginx_error.log debug;
-        location / {
-                proxy_pass         http://gitlab;
-        }
-        error_page   500 502 503 504  /50x.html;
-        location = /50x.html {
-                root   /var/www/nginx-default;
-        }
+#reload service nginx
+echo 'Reload Nginx'
+systemctl reload nginx
 
-}" > /etc/nginx/sites-available/gitlab.server.conf
+#Push repo front
+cd ~/vms/repositories/front
+git init
+git add .
+git commit -m "first commit"
+git remote add origin http://root:${gitlab_root_password}@gitlab.server/root/front.git
+git push --set-upstream origin master
 
-echo "
-upstream front {
-  server 192.168.0.3;
-}
-server {
-        listen   80;
-        server_name  front.server;
-        access_log  /var/log/front.access.log;
-        error_log  /var/log/front.nginx_error.log debug;
-        location / {
-                proxy_pass         http://front;
-        }
-        error_page   500 502 503 504  /50x.html;
-        location = /50x.html {
-                root   /var/www/nginx-default;
-        }
+#Push repo back
+cd ~/vms/repositories/back
+git init
+git add .
+git commit -m "first commit"
+git remote add origin http://root:${gitlab_root_password}@gitlab.server/root/back.git
+git push --set-upstream origin master
 
-}" > /etc/nginx/sites-available/front.server.conf
+#key ssh files to variable
+front_server_file=$(< ~/vms/.vagrant/machines/front_server/virtualbox/private_key)
+back_server_file=$(< ~/vms/.vagrant/machines/back_server/virtualbox/private_key)
+database_server_file=$(< ~/vms/.vagrant/machines/database_server/virtualbox/private_key)
 
-#delete and link(re-link) available and enabled
-rm /etc/nginx/sites-enabled/gitlab.server.conf
-rm /etc/nginx/sites-enabled/front.server.conf
-ln -s /etc/nginx/sites-available/gitlab.server.conf /etc/nginx/sites-enabled/
-ln -s /etc/nginx/sites-available/front.server.conf /etc/nginx/sites-enabled/
+#hosts file to variable
+hosts_file=$(< ~/vms/ansible/hosts_gitlab_server)
 
-#reload service
-systemctl restart nginx
+#Get gilab private key
+private_token=$(curl --data "grant_type=password&username=root&password=${gitlab_root_password}" --request POST http://192.168.0.2/oauth/token -s | grep -o '"[^"]*"\s*:\s*"[^"]*"' | grep -E '^"(access_token)"' | sed -E 's/.*"access_token":"?([^,"]*)"?.*/\1/')
+
+#add key ssh servers to variables
+curl --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/1/variables" --form "key=ANSIBLE_KEY_SSH_FRONT" --form "value=${front_server_file}" --form "protected=true"
+curl --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/2/variables" --form "key=ANSIBLE_KEY_SSH_BACK" --form "value=${back_server_file}" --form "protected=true"
+curl --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/2/variables" --form "key=ANSIBLE_KEY_SSH_DATABASE" --form "value=${database_server_file}" --form "protected=true"
+
+#add ansible hosts to variable gitlab
+curl --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/1/variables" --form "key=ANSIBLE_HOSTS" --form "value=${hosts_file}" --form "protected=true"
+curl --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/2/variables" --form "key=ANSIBLE_HOSTS" --form "value=${hosts_file}" --form "protected=true"
