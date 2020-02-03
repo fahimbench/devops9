@@ -46,40 +46,6 @@
     apt:
       name: docker-ce
       state: latest
-  - name: create playbooks config hosts directory
-    file:
-      path: /ansible
-      state: directory
-      mode: "0777"
-  - name: copy hosts config
-    copy:
-      src: ~/vms/ansible/hosts_gitlab_server
-      dest: /ansible/hosts
-  - name: Hosts file to variable
-    set_fact: hosts_file={{ lookup('file', '~/vms/ansible/hosts_gitlab_server') }}
-  - name: create ssh directory
-    file:
-      path: /ssh
-      state: directory
-      mode: "0600"
-  - name: copy front_server private key
-    copy:
-      src: ~/vms/.vagrant/machines/front_server/virtualbox/private_key
-      dest: /ssh/front_server
-  - name: front server to variable
-    set_fact: front_server_file={{ lookup('file', '~/vms/.vagrant/machines/front_server/virtualbox/private_key') }}
-  - name: copy back_server private key
-    copy:
-      src: ~/vms/.vagrant/machines/back_server/virtualbox/private_key
-      dest: /ssh/back_server
-  - name: back server to variable
-    set_fact: back_server_file={{ lookup('file', '~/vms/.vagrant/machines/back_server/virtualbox/private_key') }}
-  - name: copy database_server private key
-    copy:
-      src: ~/vms/.vagrant/machines/database_server/virtualbox/private_key
-      dest: /ssh/database_server
-  - name: database server to variable
-    set_fact: database_server_file={{ lookup('file', '~/vms/.vagrant/machines/database_server/virtualbox/private_key') }}
   - name: install gitlab-ce container (docker)
     docker_container:
       name: gitlab

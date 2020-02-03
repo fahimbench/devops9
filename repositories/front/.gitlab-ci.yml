@@ -40,8 +40,8 @@ deploy_front:
     - master
   script:
     - apt-get -y install ansible
-    - echo $ANSIBLE_KEY_SSH_FRONT > front_server
-    - echo $ANSIBLE_HOSTS > hosts
-    - ansible-playbook playbooks/playbook.yml
+    - echo -e $ANSIBLE_KEY_SSH_FRONT > front_server
+    - echo -e $ANSIBLE_HOSTS > hosts.yml
+    - ansible-playbook playbooks/playbook.yml -i hosts
   after_script:
     - rm front_server hosts
