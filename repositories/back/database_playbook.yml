@@ -1,0 +1,90 @@
+- name: Installation du serveur database
+  hosts: database_server
+  become: yes
+  tasks:
+    - name: Install Utility software
+      apt: name={{item}} state=latest update_cache=yes
+      with_items:
+        - software-properties-common
+        - python-mysqldb
+        - ufw
+    - name: Install MariaDB Packages
+      apt: name={{item}} state=installed update_cache=yes
+      with_items:
+        - mariadb-client
+        - mariadb-common
+        - mariadb-server
+    - name: Create MariaDB Directories
+      file: path=/data/{{item}} state=directory owner=mysql group=mysql recurse=yes
+      with_items:
+        - db
+        - log
+    - name: Create a my.cnf file with root credential
+      shell: |
+        echo "[client]
+        user=root
+        password={{ DB_PASSWORD }}" > ~/.my.cnf
+        chmod 0600 /etc/mysql/my.cnf
+    - name: Count files in /data/db
+      find: path=/data/db patterns='*'
+      register: db_files
+    - name: Run mysql_install_db only if /data/db is empty
+      command: mysql_install_db --datadir=/data/db
+      when: db_files.matched|int == 0
+    - name: Start MariaDB
+      service: name=mysql state=started
+    - name: Is root password set?
+      command: mysql -u root --execute "SELECT NOW()"
+      register: is_root_password_set
+      ignore_errors: yes
+    - name: Set root password
+      mysql_user: user=root password="{{DB_PASSWORD}}" host=localhost
+      when: is_root_password_set.rc == 0
+    - name: Set root password for other hosts
+      mysql_user: user=root password="{{DB_PASSWORD}}" host="{{item}}" login_user="root" login_host="localhost" login_password="{{DB_PASSWORD}}"
+      when: is_root_password_set.rc == 0
+      with_items:
+        - "%"
+        - "127.0.0.1"
+        - "::1"
+    - name: Create back database
+      mysql_db:
+        name: back
+        login_user: root
+        login_password: "{{DB_PASSWORD}}"
+        state: present
+      when: is_root_password_set.rc == 0
+    - name: Create user for back db
+      mysql_user:
+        name: deploy
+        password: "{{DB_PASSWORD}}"
+        priv: 'back.*:ALL'
+        login_user: root
+        login_password: "{{DB_PASSWORD}}"
+        host: '%'
+        state: present
+      when: is_root_password_set.rc == 0
+    - name: Set deploy password for other hosts
+      mysql_user: user=deploy password="{{DB_PASSWORD}}" host="{{item}}" login_user="root" login_host="localhost" login_password="{{DB_PASSWORD}}"
+      when: is_root_password_set.rc == 0
+      with_items:
+        - "%"
+        - "127.0.0.1"
+        - "::1"
+        - "localhost"
+    - name: Restart MariaDB
+      service: name=mysql state=restarted
+      when: is_root_password_set.rc == 0
+    - name: UFW - Allow SSH connections
+      shell: |
+        ufw allow ssh
+        ufw allow 3306/tcp
+        ufw enable
+      when: is_root_password_set.rc == 0
+    - name: enable UFW
+      ufw:
+        state: enabled
+      when: is_root_password_set.rc == 0
+    - name: Restart UFW
+      service: name=ufw state=restarted
+      when: is_root_password_set.rc == 0

@@ -83,5 +83,11 @@
         fi
         sleep 5
       done'
-  - name: Create gitlab runner
+  - name: Create gitlab runner 1
     shell: docker exec gitlab-runner gitlab-runner register --non-interactive --url "http://192.168.0.2" --registration-token {{ token }} --executor "docker" --docker-image ruby:2.1 --description "docker-runner" --tag-list "docker" --run-untagged="true" --locked="false" --access-level="not_protected"
+  - name: Create gitlab runner 2
+    shell: docker exec gitlab-runner gitlab-runner register --non-interactive --url "http://192.168.0.2" --registration-token {{ token }} --executor "docker" --docker-image ruby:2.1 --description "docker-runner" --tag-list "docker" --run-untagged="true" --locked="false" --access-level="not_protected"
+  - name: Set concurrents gitlab runner 1 => 2
+    shell: |
+      docker exec gitlab-runner sed -i "s/\(concurrent\s*=\s*\).*/\12/" /etc/gitlab-runner/config.toml
+      docker exec gitlab-runner /etc/init.d/gitlab-runner restart

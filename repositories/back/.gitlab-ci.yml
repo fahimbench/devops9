@@ -1,0 +1,58 @@
+image: php:7.1
+
+before_script:
+  - apt-get update
+  - apt-get -y install git zip
+  - cp .env.example .env
+  - sed -i "s/\(DB_HOST\s*=\s*\).*/\1$DB_HOST/" .env
+  - sed -i "s/\(DB_PORT\s*=\s*\).*/\1$DB_PORT/" .env
+  - sed -i "s/\(DB_DATABASE\s*=\s*\).*/\1$DB_DATABASE/" .env
+  - sed -i "s/\(DB_USERNAME\s*=\s*\).*/\1$DB_USERNAME/" .env
+  - sed -i "s/\(DB_PASSWORD\s*=\s*\).*/\1$DB_PASSWORD/" .env
+  - curl --silent --show-error https://getcomposer.org/installer | php
+  - php composer.phar install
+  - php artisan key:generate
+  - php artisan config:cache
+  - php artisan cache:clear
+
+stages:
+  - database
+  - test
+  - deploy
+
+database_creation:
+  stage: database
+  only:
+    - master
+  script:
+    - apt-get -y install ansible python-pip
+    - pip install 'ansible==2.2.1.0'
+    - cp -f ansible.cfg /etc/ansible
+    - echo -e "$ANSIBLE_KEY_SSH_DATABASE" > /etc/ansible/database_server
+    - echo -e "$ANSIBLE_HOSTS" > /etc/ansible/hosts.yml
+    - chmod 0600 /etc/ansible/database_server
+    - ansible-playbook database_playbook.yml --extra-var DB_PASSWORD=$DB_PASSWORD
+    - docker-php-ext-install pdo_mysql
+    - php artisan migrate
+
+test_with_lab:
+  stage: test
+  only:
+    - master
+  script:
+    - vendor/bin/phpunit
+
+deploy_back:
+  stage: deploy
+  only:
+    - master
+  script:
+    - apt-get -y install ansible python-pip rsync
+    - pip install 'ansible==2.2.1.0'
+    - cp -f ansible.cfg /etc/ansible
+    - echo -e "$ANSIBLE_KEY_SSH_BACK" > /etc/ansible/back_server
+    - echo -e "$ANSIBLE_HOSTS" > /etc/ansible/hosts.yml
+    - chmod 0600 /etc/ansible/back_server
+    - php composer.phar install --no-dev -o
+    - rm bootstrap/cache/config.php
+    - ansible-playbook back_playbook.yml --extra-var current_path=$PWD

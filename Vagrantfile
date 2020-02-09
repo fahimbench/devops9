@@ -30,7 +30,7 @@ Vagrant.configure(VAGRANTFILE_API_VERSION) do |config|
         if index == N
         config.vm.provision :ansible do |ansible|
           ansible.limit = 'all'
-          ansible.inventory_path = 'ansible/hosts'
+          ansible.inventory_path = './ansible/hosts.yml'
           ansible.extra_vars = {
             "token" => generate_code(10),
             "gitlab_root_password" => ENV['GITLAB_ROOT_PASSWORD'],

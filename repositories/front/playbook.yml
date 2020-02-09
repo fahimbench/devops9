@@ -1,0 +1,25 @@
+- name: Installation du serveur front
+  hosts: front_server
+  become: yes
+  tasks:
+  - name: Install nginx web server
+    apt: name=nginx state=latest update_cache=yes
+  - name: Ansible delete file example
+    file:
+      path: /var/www/html
+      state: absent
+  - name: Copy dist folder to deploy
+    synchronize:
+      mode: push
+      src: /builds/root/front/dist/
+      dest: /var/www/html
+  - name: Copy nginx conf
+    copy:
+      src: front.server.conf
+      dest: /etc/nginx/sites-enabled/
+  - name: Ansible delete file example
+    file:
+      path: /etc/nginx/sites-enabled/default
+      state: absent
+  - name: reload nginx
+    service: name=nginx state=reloaded enabled=true

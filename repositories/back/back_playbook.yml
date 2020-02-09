@@ -1,0 +1,31 @@
+- name: Installation du serveur back
+  hosts: back_server
+  become: yes
+  tasks:
+    - name: Install Utility software
+      apt: name={{item}} state=latest update_cache=yes
+      with_items:
+        - php-fpm
+        - php-mysql
+        - nginx
+    - name: Ansible delete file example
+      file:
+        path: /var/www/html
+        state: absent
+    - name: Copy dist folder to deploy
+      synchronize:
+        mode: push
+        src: "{{current_path}}"
+        dest: /var/www/html
+    - name: Copy nginx conf
+      copy:
+        src: back.server.conf
+        dest: /etc/nginx/sites-enabled/
+    - name: Ansible delete file example
+      file:
+        path: /etc/nginx/sites-enabled/default
+        state: absent
+    - name: reload nginx
+      service:
+        name: nginx
+        state: reloaded

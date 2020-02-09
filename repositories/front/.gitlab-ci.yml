@@ -1,13 +1,9 @@
 image: node:latest
 
-cache:
-  paths:
-    - node_modules/
-    - .yarn
-    - dist/
-
 before_script:
   - apt-get update
+  - yarn config set cache-folder .yarn
+  - yarn install
 
 stages:
   - build
@@ -19,8 +15,6 @@ build_project:
   only:
     - master
   script:
-    - yarn config set cache-folder .yarn
-    - yarn install
     - npm run build --prod
 
 test_with_lab:
@@ -30,8 +24,6 @@ test_with_lab:
   script:
     - apt-get -y install chromium
     - export CHROME_BIN=/usr/bin/chromium
-    - yarn config set cache-folder .yarn
-    - yarn install
     - npm run test
 
 deploy_front:
@@ -39,9 +31,11 @@ deploy_front:
   only:
     - master
   script:
-    - apt-get -y install ansible
-    - echo -e $ANSIBLE_KEY_SSH_FRONT > front_server
-    - echo -e $ANSIBLE_HOSTS > hosts.yml
-    - ansible-playbook playbooks/playbook.yml -i hosts
-  after_script:
-    - rm front_server hosts
+    - apt-get -y install ansible python-pip rsync
+    - pip install 'ansible==2.2.1.0'
+    - cp -f ansible.cfg /etc/ansible
+    - echo -e "$ANSIBLE_KEY_SSH_FRONT" > /etc/ansible/front_server
+    - echo -e "$ANSIBLE_HOSTS" > /etc/ansible/hosts.yml
+    - chmod 0600 /etc/ansible/front_server
+    - npm run build --prod
+    - ansible-playbook playbook.yml

@@ -1,5 +1,4 @@
 #!/bin/bash
-set -e
 
 #If not launched with sudo
 if [[ $UID != 0 ]];
@@ -11,7 +10,7 @@ fi
 
 #Ask if we want remove all machine before continue if vms are already installed
 #Verify if virtualbox is installed
-if [ $(dpkg-query -W -f='${Status}' virtualbox 2>/dev/null | grep -c "ok installed") -eq 0 ];
+if [ $(dpkg-query -W -f='${Status}' virtualbox 2> /dev/null | grep -c "ok installed") -eq 0 ];
 then
   echo "Virtualbox will be installed ..."
   apt-get -yq install virtualbox > /dev/null && echo "Virtualbox installed."
@@ -35,11 +34,36 @@ else
   echo "Virtualbox already installed"
 fi
 
-echo "Please enter new gitlab root password"
-read gitlab_root_password
+set -e
+
+ok=0
+while [ $ok = 0 ]
+do
+  echo -e "\e[34mPlease enter new gitlab root password\033[0m"
+  read gitlab_root_password
+  if [ ${#gitlab_root_password} -lt 8 ]
+  then
+    echo -e "\e[91mToo short you need 8 characters min\033[0m"
+  else
+    ok=1
+  fi
+done
+
+ok=0
+while [ $ok = 0 ]
+do
+  echo -e "\e[34mPlease enter new database password\033[0m"
+  read db_password
+  if [ ${#db_password} -lt 8 ]
+  then
+    echo -e "\e[91mToo short you need 8 characters min\033[0m"
+  else
+    ok=1
+  fi
+done
 
 #Verify if git is installed
-if [ $(dpkg-query -W -f='${Status}' git 2>/dev/null | grep -c "ok installed") -eq 0 ];
+if [ $(dpkg-query -W -f='${Status}' git 2> /dev/null | grep -c "ok installed") -eq 0 ];
 then
   echo "Git will be installed ..."
   apt-get -yq install git > /dev/null && echo "Git installed."
@@ -48,7 +72,7 @@ else
 fi
 
 #Verify if vagrant is installed
-if [ $(dpkg-query -W -f='${Status}' vagrant 2>/dev/null | grep -c "ok installed") -eq 0 ];
+if [ $(dpkg-query -W -f='${Status}' vagrant 2> /dev/null | grep -c "ok installed") -eq 0 ];
 then
   echo "Vagrant will be installed ..."
   apt-get -yq install vagrant > /dev/null && echo "Vagrant installed."
@@ -57,7 +81,7 @@ else
 fi
 
 #Verify if vagrant is installed
-if [ $(dpkg-query -W -f='${Status}' ansible 2>/dev/null | grep -c "ok installed") -eq 0 ];
+if [ $(dpkg-query -W -f='${Status}' ansible 2> /dev/null | grep -c "ok installed") -eq 0 ];
 then
   echo "Ansible will be installed ..."
   apt-get -yq install ansible > /dev/null && echo "Ansible installed.";
@@ -66,7 +90,7 @@ else
 fi
 
 #Verify if nginx is installed
-if [ $(dpkg-query -W -f='${Status}' nginx 2>/dev/null | grep -c "ok installed") -eq 0 ];
+if [ $(dpkg-query -W -f='${Status}' nginx 2> /dev/null | grep -c "ok installed") -eq 0 ];
 then
   echo "Nginx will be installed ..."
   apt-get -yq install nginx > /dev/null && echo "nginx installed.";
@@ -124,32 +148,29 @@ echo 'Copy repositories folder to ~/vms'
 cp -R repositories ~/vms/repositories
 
 #change directory
-echo 'Change directory to ~/vms'
-cd ~/vms
-
 #Launch Vagrantfile build all VMs
-echo 'Vagrant Up Vms'
-GITLAB_ROOT_PASSWORD=${gitlab_root_password} vagrant up
+echo 'Change directory to ~/vms and Vagrant Up Vms'
+cd ~/vms && GITLAB_ROOT_PASSWORD=${gitlab_root_password} vagrant up
 
 #reload service nginx
 echo 'Reload Nginx'
 systemctl reload nginx
 
 #Push repo front
-cd ~/vms/repositories/front
-git init
-git add .
-git commit -m "first commit"
-git remote add origin http://root:${gitlab_root_password}@gitlab.server/root/front.git
-git push --set-upstream origin master
+(cd ~/vms/repositories/front &&
+git init &&
+git add . &&
+git commit -m "first commit" &&
+git remote add origin http://root:${gitlab_root_password}@gitlab.server/root/front.git &&
+git push --set-upstream origin master)
 
 #Push repo back
-cd ~/vms/repositories/back
-git init
-git add .
-git commit -m "first commit"
-git remote add origin http://root:${gitlab_root_password}@gitlab.server/root/back.git
-git push --set-upstream origin master
+(cd ~/vms/repositories/back &&
+git init &&
+git add . &&
+git commit -m "first commit" &&
+git remote add origin http://root:${gitlab_root_password}@gitlab.server/root/back.git &&
+git push --set-upstream origin master)
 
 #key ssh files to variable
 front_server_file=$(< ~/vms/.vagrant/machines/front_server/virtualbox/private_key)
@@ -157,16 +178,23 @@ back_server_file=$(< ~/vms/.vagrant/machines/back_server/virtualbox/private_key)
 database_server_file=$(< ~/vms/.vagrant/machines/database_server/virtualbox/private_key)
 
 #hosts file to variable
-hosts_file=$(< ~/vms/ansible/hosts_gitlab_server)
+hosts_file=$(< ~/vms/ansible/hosts_gitlab_server.yml)
 
 #Get gilab private key
 private_token=$(curl --data "grant_type=password&username=root&password=${gitlab_root_password}" --request POST http://192.168.0.2/oauth/token -s | grep -o '"[^"]*"\s*:\s*"[^"]*"' | grep -E '^"(access_token)"' | sed -E 's/.*"access_token":"?([^,"]*)"?.*/\1/')
 
-#add key ssh servers to variables
-curl --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/1/variables" --form "key=ANSIBLE_KEY_SSH_FRONT" --form "value=${front_server_file}" --form "protected=true"
-curl --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/2/variables" --form "key=ANSIBLE_KEY_SSH_BACK" --form "value=${back_server_file}" --form "protected=true"
-curl --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/2/variables" --form "key=ANSIBLE_KEY_SSH_DATABASE" --form "value=${database_server_file}" --form "protected=true"
+#add key ssh servers variables to gitlab
+curl -s --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/1/variables" --form "key=ANSIBLE_KEY_SSH_FRONT" --form "value=${front_server_file}" >> /dev/null
+curl -s --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/2/variables" --form "key=ANSIBLE_KEY_SSH_BACK" --form "value=${back_server_file}" >> /dev/null
+curl -s --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/2/variables" --form "key=ANSIBLE_KEY_SSH_DATABASE" --form "value=${database_server_file}" >> /dev/null
 
-#add ansible hosts to variable gitlab
-curl --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/1/variables" --form "key=ANSIBLE_HOSTS" --form "value=${hosts_file}" --form "protected=true"
-curl --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/2/variables" --form "key=ANSIBLE_HOSTS" --form "value=${hosts_file}" --form "protected=true"
+#add ansible hosts variables to gitlab
+curl -s --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/1/variables" --form "key=ANSIBLE_HOSTS" --form "value=${hosts_file}" >> /dev/null
+curl -s --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/2/variables" --form "key=ANSIBLE_HOSTS" --form "value=${hosts_file}" >> /dev/null
+
+#add somes variables to gitlab
+curl -s --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/2/variables" --form "key=DB_HOST" --form "value=192.168.0.5" >> /dev/null
+curl -s --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/2/variables" --form "key=DB_PORT" --form "value=3306" >> /dev/null
+curl -s --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/2/variables" --form "key=DB_DATABASE" --form "value=back" >> /dev/null
+curl -s --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/2/variables" --form "key=DB_USERNAME" --form "value=deploy" >> /dev/null
+curl -s --request POST --header "Authorization: Bearer ${private_token}" "http://192.168.0.2/api/v4/projects/2/variables" --form "key=DB_PASSWORD" --form "value=${db_password}" >> /dev/null
