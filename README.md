@@ -8,6 +8,8 @@ sudo bash script.sh
 ```
 **Compatibilité -> distro se basant sur :** Ubuntu, Debian
 
+**Configuration minimal :** 8Go RAM
+
 Ce script installera les packages suivants sur la machine hôte :
 
 - Ansible
